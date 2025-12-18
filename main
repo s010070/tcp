@@ -1,0 +1,107 @@
+import socket
+import threading
+import base64
+HOST = "127.0.0.1"
+PORT = 8000
+# 一張很小的紅點 PNG（base64，內建圖片）
+IMAGE_BASE64 = (
+"iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAF0lEQVQoU2NkYGD4"
+"//8/AxJgYGBgAAAABQABDQottAAAAABJRU5ErkJggg=="
+)
+IMAGE_DATA = base64.b64decode(IMAGE_BASE64)
+def handle_client(conn, addr):
+print("Client connected:", addr)
+request = conn.recv(4096)
+if not request:
+conn.close()
+return
+request_text = request.decode(errors="ignore")
+lines = request_text.split("\r\n")
+request_line = lines[0]
+print("Request Line:", request_line)
+method, path, _ = request_line.split()
+# ===== GET / 顯示 HTML =====
+if method == "GET" and path == "/":
+html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>HTTP Server Demo</title>
+</head>
+<body>
+<h1>HTTP Server Course Project</h1>
+<p>This server supports:</p>
+<ul>
+<li>GET / POST</li>
+<li>Multi-threading</li>
+<li>Image (base64 embedded)</li>
+</ul>
+<h2>POST Test</h2>
+<form method="POST" action="/">
+<input type="text" name="message" placeholder="Type something">
+<button type="submit">Send</button>
+</form>
+<h2>Image Test</h2>
+<img src="/image" alt="demo image">
+<hr>
+<p>Client: {addr}</p>
+</body>
+</html>
+"""
+body = html.encode("utf-8")
+header = (
+"HTTP/1.1 200 OK\r\n"
+"Content-Type: text/html; charset=UTF-8\r\n"
+f"Content-Length: {len(body)}\r\n"
+"\r\n"
+)
+conn.sendall(header.encode() + body)
+# ===== GET /image 顯示圖片 =====
+elif method == "GET" and path == "/image":
+header = (
+"HTTP/1.1 200 OK\r\n"
+"Content-Type: image/png\r\n"
+f"Content-Length: {len(IMAGE_DATA)}\r\n"
+"\r\n"
+)
+conn.sendall(header.encode() + IMAGE_DATA)
+# ===== POST / =====
+elif method == "POST":
+body_data = request_text.split("\r\n\r\n", 1)[1]
+response = f"""
+<html>
+<body>
+<h1>POST Data Received</h1>
+<p>{body_data}</p>
+<a href="/">Back</a>
+</body>
+</html>
+"""
+body = response.encode("utf-8")
+header = (
+"HTTP/1.1 200 OK\r\n"
+"Content-Type: text/html; charset=UTF-8\r\n"
+f"Content-Length: {len(body)}\r\n"
+"\r\n"
+)
+conn.sendall(header.encode() + body)
+# ===== 不支援的方法 =====
+else:
+msg = "404 Not Found".encode()
+header = (
+"HTTP/1.1 404 Not Found\r\n"
+f"Content-Length: {len(msg)}\r\n"
+"\r\n"
+)
+conn.sendall(header.encode() + msg)
+conn.close()
+# ===== 主程式（多執行緒） =====
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.bind((HOST, PORT))
+server.listen(10)
+print(f"Server running at http://{HOST}:{PORT}")
+while True:
+conn, addr = server.accept()
+thread = threading.Thread(target=handle_client, args=(conn, addr))
+thread.start()
